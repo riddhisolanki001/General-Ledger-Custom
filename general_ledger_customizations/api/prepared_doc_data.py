@@ -70,6 +70,24 @@ def get_general_ledger_prepared_data():
         cleaned_data.pop(-1)  
     if len(cleaned_data) > 1:
         cleaned_data.pop(-1) 
+        
+    # Step 4: Add cheque_no for Payment Entry rows
+    payment_cache = {}
+
+    for row in cleaned_data:
+        if row.get("voucher_type") == "Payment Entry" and row.get("voucher_no"):
+            pe_name = row.get("voucher_no")
+
+            # Cache to avoid repeated DB hits
+            if pe_name not in payment_cache:
+                payment_cache[pe_name] = frappe.db.get_value(
+                    "Payment Entry",
+                    pe_name,
+                    "reference_no"
+                )
+
+            row["cheque_no"] = payment_cache.get(pe_name)
+    
 
     return {
         "success": True,
