@@ -81,8 +81,9 @@ def get_general_ledger_prepared_data():
             if row.get("voucher_type") == "Payment Entry" and row.get("voucher_no"):
                 pe_name = row.get("voucher_no")
                 account_name = (row.get("account") or "").lower()
+                against_account = (row.get("against") or "").lower()
 
-                if row.get("party_type") == "Supplier" and "withholding" in account_name:
+                if "withholding" in account_name or "withholding" in against_account:
                     if pe_name not in withholding_cache:
                         tax_category = frappe.db.get_value(
                             "Payment Entry",
