@@ -8,6 +8,7 @@ def get_general_ledger_prepared_data():
         Returns parsed data + applied filter values from the latest
         Prepared Report for General Ledger.
         Detects gzip and plain JSON storage.
+        Add comment
         """
         import json
         import gzip
