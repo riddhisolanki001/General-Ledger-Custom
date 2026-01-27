@@ -27,6 +27,15 @@ def custom_process_gl_map(gl_map, merge_entries=True, precision=None, from_repos
 
             gl_map = toggle_debit_credit_if_negative(gl_map)
             return gl_map
+        else:
+            if gl_map[0].voucher_type != "Period Closing Voucher":
+                gl_map = distribute_gl_based_on_cost_center_allocation(gl_map, precision, from_repost)
+
+            if merge_entries:
+                gl_map = merge_similar_entries(gl_map, precision)
+
+            gl_map = toggle_debit_credit_if_negative(gl_map)
+            return gl_map
         
     else:
         if gl_map[0].voucher_type != "Period Closing Voucher":
