@@ -4,6 +4,7 @@ from frappe.utils.pdf import get_pdf as original_get_pdf
 from frappe.core.doctype.access_log.access_log import make_access_log
 from frappe.utils import get_url
 
+
 @frappe.whitelist()
 def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
 
