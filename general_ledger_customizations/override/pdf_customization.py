@@ -18,10 +18,13 @@ def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
         report = frappe.get_doc("Report", "General Ledger")
         url = get_url()
 
+        # Get the default letterhead or specify a specific one
+        letterhead = "General Ledger"
+
         download_url = (
             f"{url}/api/method/frappe.utils.print_format.download_pdf"
-            "?doctype=Report&name=General%20Ledger&format=General%20Ledger"
-            "&no_letterhead=1&letterhead=No%20Letterhead&_lang=en-GB"
+            f"?doctype=Report&name=General%20Ledger&format=General%20Ledger"
+            f"&letterhead={letterhead}&_lang=en-GB"
         )
 
         frappe.local.response.update({
