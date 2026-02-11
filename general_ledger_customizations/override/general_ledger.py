@@ -522,16 +522,16 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
         filtered_tds_gl_entries = [
             gle for gle in gl_entries
             if gle.get("voucher_no") in vouchers_with_tds
-            and (from_date <= getdate(gle.posting_date) <= to_date
-                or (cstr(gle.is_opening) == "Yes" and show_opening_entries))
+            and (from_date <= getdate(gle.posting_date) <= to_date)
+                and not (cstr(gle.is_opening) == "Yes" and not show_opening_entries)
             and (not filters.get("party") or gle.get("party") in filters.get("party"))
         ]
 
         other_gl_entries = [
             gle for gle in gl_entries
             if gle.get("voucher_no") not in vouchers_with_tds
-            and (from_date <= getdate(gle.posting_date) <= to_date
-                or (cstr(gle.is_opening) == "Yes" and show_opening_entries))
+            and ((from_date <= getdate(gle.posting_date) <= to_date)
+                and not (cstr(gle.is_opening) == "Yes" and not show_opening_entries))
             and (not filters.get("party") or gle.get("party") in filters.get("party"))
         ]
 
@@ -570,6 +570,13 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
         for gle in gl_entries:
             group_by_value = gle.get(group_by)
             gle.voucher_type = gle.voucher_type
+            
+            if cstr(gle.is_opening) == "Yes" and not show_opening_entries:
+                # only affect totals, do not add to entries
+                if gle.posting_date <= to_date:
+                    update_value_in_dict(totals, "opening", gle)
+                    update_value_in_dict(totals, "closing", gle)
+                continue
 
             if gle.posting_date < from_date or (cstr(gle.is_opening) == "Yes" and not show_opening_entries):
                 if not group_by_voucher_consolidated:
@@ -579,7 +586,7 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
                 update_value_in_dict(totals, "opening", gle)
                 update_value_in_dict(totals, "closing", gle)
 
-            elif gle.posting_date <= to_date or (cstr(gle.is_opening) == "Yes" and show_opening_entries):
+            elif gle.posting_date <= to_date or (cstr(gle.is_opening) == "Yes" and not show_opening_entries):
                 if not group_by_voucher_consolidated:
                     update_value_in_dict(gle_map[group_by_value].totals, "total", gle)
                     update_value_in_dict(gle_map[group_by_value].totals, "closing", gle)
