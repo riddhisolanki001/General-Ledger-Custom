@@ -27,6 +27,10 @@ app_license = "mit"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/general_ledger_customizations/css/general_ledger_customizations.css"
 # app_include_js = "/assets/general_ledger_customizations/js/general_ledger_customizations.js"
+app_include_js = [
+    # "/assets/general_ledger_customizations/js/balance_sheet.js",
+    # "/assets/general_ledger_customizations/js/balance_sheet_brackets.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/general_ledger_customizations/css/general_ledger_customizations.css"
