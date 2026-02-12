@@ -4,7 +4,7 @@ import gzip
 from frappe.utils.file_manager import get_file_path
 
 @frappe.whitelist()
-def get_trial_balance_sheet_prepared_data():
+def get_cash_flow_prepared_data():
     
     try:
         """
@@ -16,7 +16,7 @@ def get_trial_balance_sheet_prepared_data():
         # Step 1: Get latest Prepared Report for Trial Balance
         pr = frappe.get_all(
             "Prepared Report",
-            filters={"report_name": "Trial Balance"},
+            filters={"report_name": "Cash Flow"},
             fields=["name", "filters"],
             order_by="creation desc",
             limit=1
@@ -79,7 +79,7 @@ def get_trial_balance_sheet_prepared_data():
         }
     
     except Exception as e:
-        frappe.log_error("get_trial_balance_prepared_data", frappe.get_traceback())
+        frappe.log_error("get_cash_flow_prepared_data", frappe.get_traceback())
         return {
             "success": False,
             "message": f"Error: {str(e)}"

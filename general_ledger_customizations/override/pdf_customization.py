@@ -79,7 +79,7 @@ def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
         return
 
     # Handle Balance Sheet
-    if report_name.lower() == "balance sheet":
+    elif report_name.lower() == "balance sheet":
         url = get_url()
         letterhead = "General Ledger"
         
@@ -96,14 +96,50 @@ def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
         })
         return
     
-    # Handle Trial Balance
-    if report_name.lower() == "trial balance":
+    # Handle Balance Sheet
+    elif report_name.lower() == "trial balance":
+        url = get_url()
+        letterhead = "General Ledger"
+        
+        download_url = (
+            f"{url}/api/method/frappe.utils.print_format.download_pdf"
+            f"?doctype=Report&name=Trial%20Balance&format=Trial%20Balance"
+            f"&letterhead={letterhead}&_lang=en"
+        )
+
+        frappe.local.response.update({
+            "type": "redirect",
+            "location": download_url,
+            "filename": f"{report_name}.pdf"
+        })
+        return
+    
+    # Handle Cash Flow Balance
+    elif report_name.lower() == "cash flow":
         url = get_url()
         letterhead = "General Ledger" 
         
         download_url = (
             f"{url}/api/method/frappe.utils.print_format.download_pdf"
-            f"?doctype=Report&name=Trial%20Balance&format=Trial%20Balance"
+            f"?doctype=Report&name=Cash%20Flow&format=Cash%20Flow"
+            f"&letterhead={letterhead}&_lang=en"
+        )
+
+        frappe.local.response.update({
+            "type": "redirect",
+            "location": download_url,
+            "filename": f"{report_name}.pdf"
+        })
+        return
+    
+
+    elif report_name.lower() == "profit and loss statement":
+        url = get_url()
+        letterhead = "General Ledger" 
+        
+        download_url = (
+            f"{url}/api/method/frappe.utils.print_format.download_pdf"
+            f"?doctype=Report&name=Profit%20and%20Loss%20Statement&format=Profit%20and%20Loss%20Statement"
             f"&letterhead={letterhead}&_lang=en"
         )
 
