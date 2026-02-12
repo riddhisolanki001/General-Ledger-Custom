@@ -4,19 +4,19 @@ import gzip
 from frappe.utils.file_manager import get_file_path
 
 @frappe.whitelist()
-def get_trial_balance_sheet_prepared_data():
+def get_pl_statement_prepared_data():
     
     try:
         """
         Returns parsed data + applied filter values from the latest
-        Prepared Report for Trial Balance.
+        Prepared Report for Profit and Loss Statement.
         Detects gzip and plain JSON storage.
         """
         
-        # Step 1: Get latest Prepared Report for Trial Balance
+        # Step 1: Get latest Prepared Report for Profit and Loss Statement
         pr = frappe.get_all(
             "Prepared Report",
-            filters={"report_name": "Trial Balance"},
+            filters={"report_name": "Profit and Loss Statement"},
             fields=["name", "filters"],
             order_by="creation desc",
             limit=1
@@ -25,7 +25,7 @@ def get_trial_balance_sheet_prepared_data():
         if not pr:
             return {
                 "success": False, 
-                "message": "No Prepared Report found for Trial Balance. Please generate the report first."
+                "message": "No Prepared Report found for Profit and Loss Statement. Please generate the report first."
             }
 
         pr = pr[0]
@@ -79,7 +79,7 @@ def get_trial_balance_sheet_prepared_data():
         }
     
     except Exception as e:
-        frappe.log_error("get_trial_balance_prepared_data", frappe.get_traceback())
+        frappe.log_error("get_pl_statement_prepared_data", frappe.get_traceback())
         return {
             "success": False,
             "message": f"Error: {str(e)}"
