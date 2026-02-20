@@ -17,7 +17,10 @@ def custom_process_gl_map(gl_map, merge_entries=True, precision=None, from_repos
     doc = frappe._dict(gl_map[0]) if gl_map else None
     if doc and doc.voucher_type == "Payment Entry":
         pe = frappe.get_doc("Payment Entry", doc.voucher_no)
-        if pe.apply_tax_withholding_amount:
+        if (pe.apply_tax_withholding_amount or (pe.get("taxes") and pe.get("taxes")[0].account_head
+            and "withholding" in pe.get("taxes")[0].account_head.lower()
+                )
+            ):
             if gl_map[0].voucher_type != "Period Closing Voucher":
                 gl_map = distribute_gl_based_on_cost_center_allocation(gl_map, precision, from_repost)
 
@@ -54,16 +57,22 @@ from erpnext.accounts.doctype.payment_entry.payment_entry import PaymentEntry
 
 def custom_add_tax_gl_entries(self, gl_entries):
     time.sleep(0.5)
-    if self.apply_tax_withholding_amount:
+    if (self.apply_tax_withholding_amount or ( self.get("taxes")
+        and self.get("taxes")[0].account_head
+        and "withholding" in self.get("taxes")[0].account_head.lower()
+        )
+    ):
         frappe.log_error("Applying Withholding Tax GL Entries", f"Payment Entry: {self.name}")
         if gl_entries:
             first_account = gl_entries[0]["account"]  # Store first account
-
+            
+        total_withholding = 0
         for d in self.get("taxes"):
             account_currency = get_account_currency(d.account_head)
             if account_currency != self.company_currency:
                 frappe.throw(_("Currency for {0} must be {1}").format(d.account_head, self.company_currency))
 
+            total_withholding += d.tax_amount
             # Determine debit/credit based on payment type and tax type
             if self.payment_type in ("Pay", "Internal Transfer"):
                 dr_or_cr = "debit" if d.add_deduct_tax == "Add" else "credit"
@@ -110,6 +119,25 @@ def custom_add_tax_gl_entries(self, gl_entries):
                     item=d,
                 )
             )
+        
+        if self.payment_type == "Pay":
+            for entry in gl_entries:
+                if entry.get("account") == self.paid_from and entry.get("credit", 0) > 0:
+                    entry["credit"] -= total_withholding
+                    entry["credit_in_account_currency"] -= total_withholding
+                    if entry.get("credit_in_transaction_currency"):
+                        entry["credit_in_transaction_currency"] -= total_withholding
+                    break
+
+        if self.payment_type == "Pay":
+            for entry in gl_entries:
+                if entry.get("account") == first_account and entry.get("debit", 0) > 0:
+                    entry["debit"] -= total_withholding
+                    entry["debit_in_account_currency"] -= total_withholding
+                    if entry.get("debit_in_transaction_currency"):
+                        entry["debit_in_transaction_currency"] -= total_withholding
+                    break    
+                
     else:
         for d in self.get("taxes"):
             account_currency = get_account_currency(d.account_head)
@@ -341,7 +369,14 @@ def custom_get_gl_entries(filters, accounting_dimensions):
                     payment_entry_cache[e["voucher_no"]] = frappe.get_doc("Payment Entry", e["voucher_no"])
                 pe = payment_entry_cache[e["voucher_no"]]
 
-                if pe.apply_tax_withholding_amount:
+                if (
+                    pe.apply_tax_withholding_amount
+                    or (
+                        pe.get("taxes")
+                        and pe.get("taxes")[0].account_head
+                        and "withholding" in pe.get("taxes")[0].account_head.lower()
+                    )
+                ):
                     # Compute total WHT for this payment
                     wht_total = sum(
                         x["debit"] for x in gl_entries
@@ -382,7 +417,17 @@ def custom_get_gl_entries(filters, accounting_dimensions):
         for gl_entry in gl_entries:
             if gl_entry.voucher_type == "Payment Entry":
                 pe = frappe.get_doc("Payment Entry", gl_entry.voucher_no)
-                if pe.paid_from == gl_entry.account and pe.apply_tax_withholding_amount:
+                if (
+                    pe.paid_from == gl_entry.account
+                    and (
+                        pe.apply_tax_withholding_amount
+                        or (
+                            pe.get("taxes")
+                            and pe.get("taxes")[0].account_head
+                            and "withholding" in pe.get("taxes")[0].account_head.lower()
+                        )
+                    )
+                ):
                     withholding = frappe.db.get_value(
                         "GL Entry",
                         {
@@ -515,8 +560,17 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
         vouchers_with_tds = []
         for voucher_no in voucher_nos:
             if frappe.db.exists("Payment Entry", voucher_no):
-                apply_flag = frappe.db.get_value("Payment Entry", voucher_no, "apply_tax_withholding_amount")
-                if apply_flag:
+                pe = frappe.get_doc("Payment Entry", voucher_no)
+                apply_flag = pe.apply_tax_withholding_amount
+
+                first_tax_account = None
+                if pe.taxes:
+                    first_tax_account = pe.taxes[0].account_head
+
+                if apply_flag or (
+                    first_tax_account
+                    and "withholding" in first_tax_account.lower()
+                ):
                     vouchers_with_tds.append(voucher_no)
 
         filtered_tds_gl_entries = [
