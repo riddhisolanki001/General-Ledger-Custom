@@ -133,9 +133,9 @@ app_include_js = [
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+   "Payment Entry": "general_ledger_customizations.override.general_ledger.CustomPaymentEntry"
+}
 
 # Document Events
 # ---------------
