@@ -16,7 +16,7 @@ def get_cash_flow_prepared_data():
         # Step 1: Get latest Prepared Report for Trial Balance
         pr = frappe.get_all(
             "Prepared Report",
-            filters={"report_name": "Cash Flow"},
+            filters={"report_name": "Custom Cash Flow"},
             fields=["name", "filters"],
             order_by="creation desc",
             limit=1
@@ -25,7 +25,7 @@ def get_cash_flow_prepared_data():
         if not pr:
             return {
                 "success": False, 
-                "message": "No Prepared Report found for Trial Balance. Please generate the report first."
+                "message": "No Prepared Report found for Cash Flow. Please generate the report first."
             }
 
         pr = pr[0]
@@ -66,7 +66,12 @@ def get_cash_flow_prepared_data():
         # Extract columns and data
         columns = content.get("columns", [])
         data = content.get("result", []) or content.get("data", [])
-
+        
+        for row in data:
+            if isinstance(row, dict):
+                for key, value in row.items():
+                    if isinstance(value, (int, float)):
+                        row[key] =round(value, 2)
         # Filter out hidden columns
         visible_columns = [col for col in columns if not col.get('hidden', False)]
 

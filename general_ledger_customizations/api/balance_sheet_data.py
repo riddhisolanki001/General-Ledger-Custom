@@ -66,6 +66,11 @@ def get_balance_sheet_prepared_data():
         columns = content.get("columns", [])
         data = content.get("result", []) or content.get("data", [])
 
+        for row in data:
+            if isinstance(row, dict):
+                for key, value in row.items():
+                    if isinstance(value, (int, float)):
+                        row[key] =round(value, 2)
         # Filter out hidden columns
         visible_columns = [col for col in columns if not col.get('hidden', False)]
 
