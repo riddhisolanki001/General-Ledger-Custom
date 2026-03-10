@@ -16,7 +16,6 @@ from frappe.utils import cstr, getdate
 
 
 def custom_process_gl_map(gl_map, merge_entries=True, precision=None, from_repost=False):
-    frappe.log_error("custom_process_gl_map1", f"gl_map: {gl_map}")
 
     time.sleep(0.5)
     if not gl_map:
@@ -64,14 +63,12 @@ gl_module.process_gl_map = custom_process_gl_map
 from erpnext.accounts.doctype.payment_entry.payment_entry import PaymentEntry
 
 def custom_add_tax_gl_entries(self, gl_entries):
-    frappe.log_error("custom_add_tax_gl_entries", f"gl_entries: {gl_entries}")
     time.sleep(0.5)
     if (self.apply_tax_withholding_amount or ( self.get("taxes")
         and self.get("taxes")[0].account_head
         and "withholding" in self.get("taxes")[0].account_head.lower()
         )
     ):
-        frappe.log_error("Applying Withholding Tax GL Entries In Payment Entry", f"Payment Entry: {self.name}")
         if gl_entries:
             first_account = gl_entries[0]["account"]  # Store first account
             
