@@ -178,9 +178,9 @@ app_include_js = [
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "general_ledger_customizations.event.get_events"
-# }
+override_whitelisted_methods = {
+		"frappe.utils.print_format.report_to_pdf": "general_ledger_customizations.override.pdf_customization.custom_report_to_pdf",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
