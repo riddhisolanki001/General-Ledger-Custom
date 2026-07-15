@@ -141,13 +141,16 @@ app_include_js = [
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "Payment Entry": {
+        "validate": "general_ledger_customizations.api.payment_entry.set_forms_of_payment_remarks",
+    }
+	# "*": {
+	# 	"on_update": "method",
+	# 	"on_cancel": "method",
+	# 	"on_trash": "method"
+	# }
+}
 
 # Scheduled Tasks
 # ---------------
