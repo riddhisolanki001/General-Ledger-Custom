@@ -684,3 +684,99 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
 
 gl_report.get_gl_entries = custom_get_gl_entries
 gl_report.get_accountwise_gle = custom_get_accountwise_gle
+
+
+
+def _get_reference_tds_details(references):
+    """Fetch TDS-related info for all non-Purchase-Order references,
+    grouped by doctype, using only fields that actually exist on
+    each doctype (so it works for Journal Entry etc. too)."""
+    details = {}  # {(doctype, name): {...}}
+ 
+    # group reference names by doctype
+    by_doctype = {}
+    for d in references:
+        if d.reference_doctype and d.reference_doctype != "Purchase Order":
+            by_doctype.setdefault(d.reference_doctype, set()).add(d.reference_name)
+ 
+    for doctype, names in by_doctype.items():
+        meta = frappe.get_meta(doctype)
+        fields = ["name"]
+        has_apply_tds = meta.has_field("apply_tds")
+        has_tds_net_total = meta.has_field("base_tax_withholding_net_total")
+        has_base_net_total = meta.has_field("base_net_total")
+ 
+        if has_apply_tds:
+            fields.append("apply_tds")
+        if has_tds_net_total:
+            fields.append("base_tax_withholding_net_total")
+        if has_base_net_total:
+            fields.append("base_net_total")
+ 
+        for row in frappe.get_all(doctype, filters={"name": ["in", list(names)]}, fields=fields):
+            details[(doctype, row.name)] = frappe._dict(
+                apply_tds=row.get("apply_tds") if has_apply_tds else 0,
+                base_tax_withholding_net_total=flt(row.get("base_tax_withholding_net_total"))
+                if has_tds_net_total
+                else 0,
+                base_net_total=flt(row.get("base_net_total")) if has_base_net_total else 0,
+            )
+ 
+    return details
+ 
+ 
+def custom_calculate_tax_withholding_net_total(self):
+    net_total = 0
+    order_details = self.get_order_wise_tax_withholding_net_total()
+ 
+    # ---------------- ADDITION ----------------
+    ref_details = _get_reference_tds_details(self.references)
+    # -------------------------------------------
+ 
+    for d in self.references:
+        # ---------------- ADDITION START ----------------
+        if d.reference_doctype and d.reference_doctype != "Purchase Order":
+            info = ref_details.get((d.reference_doctype, d.reference_name))
+            if not info:
+                continue
+ 
+            # TDS already deducted on the source document — skip it,
+            # otherwise withholding would be deducted twice.
+            if info.apply_tds:
+                continue
+ 
+            # Taxable base: TDS net total if the doctype has it,
+            # else its net total, else the allocated amount itself
+            # (Journal Entry and similar doctypes land here).
+            taxable_base = (
+                info.base_tax_withholding_net_total
+                or info.base_net_total
+                or flt(d.allocated_amount)
+            )
+ 
+            # Same formula as core
+            net_taxable_outstanding = max(
+                0, flt(d.outstanding_amount) - (flt(d.total_amount) - taxable_base)
+            )
+            net_total += min(net_taxable_outstanding, flt(d.allocated_amount))
+            continue
+        # ----------------- ADDITION END -----------------
+ 
+        # ------------- DEFAULT CORE LOGIC (unchanged) -------------
+        tax_withholding_net_total = order_details.get(d.reference_name)
+        if not tax_withholding_net_total:
+            continue
+ 
+        net_taxable_outstanding = max(
+            0, d.outstanding_amount - (d.total_amount - tax_withholding_net_total)
+        )
+ 
+        net_total += min(net_taxable_outstanding, d.allocated_amount)
+        # -----------------------------------------------------------
+ 
+    net_total += self.unallocated_amount
+ 
+    return net_total
+ 
+ 
+PaymentEntry.calculate_tax_withholding_net_total = custom_calculate_tax_withholding_net_total
