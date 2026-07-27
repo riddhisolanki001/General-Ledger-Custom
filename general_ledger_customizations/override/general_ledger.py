@@ -781,28 +781,3 @@ def custom_calculate_tax_withholding_net_total(self):
  
 PaymentEntry.calculate_tax_withholding_net_total = custom_calculate_tax_withholding_net_total
 
-
-_core_set_tax_withholding = PaymentEntry.set_tax_withholding
- 
- 
-def custom_set_tax_withholding(self):
-    # 1) Run the original logic first — adds / updates the
-    #    withholding row in the `taxes` table exactly as before.
-    _core_set_tax_withholding(self)
- 
-    # 2) Total withholding = sum of tax amounts in the taxes table.
-    #    abs() keeps it positive for display (deduct rows are -ve).
-    total_withholding = abs(sum(flt(d.tax_amount) for d in (self.get("taxes") or [])))
- 
-    # 3) Write the custom fields.
-    self.custom_withholding_amount = total_withholding
- 
-    # Net amount actually paid to the party = gross - withholding.
-    # >>> Change this if your "Net Total" means something else, e.g.:
-    #     self.custom_net_total = self.calculate_tax_withholding_net_total()   # TDS taxable base
-    #     self.custom_net_total = flt(self.base_paid_amount) - total_withholding  # company currency
-    self.custom_net_total = flt(self.paid_amount) - total_withholding
- 
- 
-PaymentEntry.set_tax_withholding = custom_set_tax_withholding
- 
