@@ -141,13 +141,16 @@ doctype_js = {"Payment Entry" : "public/js/payment_entry.js"}
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+    "Payment Entry": {
+        "validate": "general_ledger_customizations.api.payment_entry.validate_functions",
+    }
+	# "*": {
+	# 	"on_update": "method",
+	# 	"on_cancel": "method",
+	# 	"on_trash": "method"
+	# }
+}
 
 # Scheduled Tasks
 # ---------------
