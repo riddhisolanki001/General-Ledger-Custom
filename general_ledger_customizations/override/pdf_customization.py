@@ -1,4 +1,4 @@
-    # import frappe
+# import frappe
     # import re
     # from frappe.utils.pdf import get_pdf as original_get_pdf
     # from frappe.core.doctype.access_log.access_log import make_access_log
@@ -46,6 +46,7 @@
 
 import frappe
 import re
+from urllib.parse import quote
 from frappe.utils.pdf import get_pdf as original_get_pdf
 from frappe.core.doctype.access_log.access_log import make_access_log
 from frappe.utils import get_url
@@ -65,9 +66,19 @@ def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
         url = get_url()
         letterhead = "General Ledger"
 
+        # Format is chosen from the "Format" dropdown in the Print Settings popup.
+        # The client injects a marker into the HTML (render_pdf only forwards
+        # html + orientation to the server, so the choice rides inside the html):
+        #   Claims  (default) -> Print Format "General Ledger"
+        #   Refunds           -> Print Format "General Ledger Refunds"
+        print_format = "General Ledger"
+        match_type = re.search(r"GL_FORMAT_TYPE:\s*(\w+)", html or "", re.IGNORECASE)
+        if match_type and match_type.group(1).strip().lower() == "refunds":
+            print_format = "General Ledger Refunds"
+
         download_url = (
             f"{url}/api/method/frappe.utils.print_format.download_pdf"
-            f"?doctype=Report&name=General%20Ledger&format=General%20Ledger"
+            f"?doctype=Report&name=General%20Ledger&format={quote(print_format)}"
             f"&letterhead={letterhead}&_lang=en-GB"
         )
 

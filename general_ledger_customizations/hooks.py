@@ -28,6 +28,7 @@ app_license = "mit"
 # app_include_css = "/assets/general_ledger_customizations/css/general_ledger_customizations.css"
 # app_include_js = "/assets/general_ledger_customizations/js/general_ledger_customizations.js"
 app_include_js = [
+    "/assets/general_ledger_customizations/js/gl_print_format_selector.js",
     # "/assets/general_ledger_customizations/js/balance_sheet.js",
     # "/assets/general_ledger_customizations/js/balance_sheet_brackets.js",
 ]
