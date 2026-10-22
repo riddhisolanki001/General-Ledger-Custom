@@ -206,7 +206,7 @@ def custom_add_tax_gl_entries(self, gl_entries):
 PaymentEntry.add_tax_gl_entries = custom_add_tax_gl_entries
 
 from erpnext.accounts.report.general_ledger import general_ledger as gl_report
-from erpnext.accounts.report.general_ledger.general_ledger import get_gl_entries,get_conditions
+from erpnext.accounts.report.general_ledger.general_ledger import get_gl_entries, get_conditions, get_columns as std_get_columns
 from erpnext.accounts.report.utils import convert_to_presentation_currency, get_currency,convert
 
 def get_party_name_map():
@@ -478,11 +478,95 @@ def custom_get_gl_entries(filters, accounting_dimensions):
     for gl_entry in gl_entries:
         if gl_entry.party_type and gl_entry.party:
             gl_entry.party_name = party_name_map.get(gl_entry.party_type, {}).get(gl_entry.party)
+
+    # ---- Purchase Invoice fields (member no / policy no / bill no) + filters --
+    attach_purchase_invoice_fields(gl_entries)
+
+    # filter fieldname (report)  ->  row fieldname (populated above)
+    pi_filter_map = {
+        "member_number": "custom_member_number",
+        "custom_member_policy_number": "custom_member_policy_number",
+        "bill_no": "bill_no",
+    }
+    for filter_field, row_field in pi_filter_map.items():
+        value = filters.get(filter_field)
+        if value:
+            value = str(value).strip()
+            gl_entries = [
+                e for e in gl_entries
+                if (e.get(row_field) or "") == value
+            ]
+    # --------------------------------------------------------------------------
+
     # Currency conversion if needed
     if filters.get("presentation_currency"):
         return convert_to_presentation_currency(gl_entries, currency_map, filters)
     else:
         return gl_entries
+
+
+# Purchase Invoice fields surfaced on the General Ledger (lookup, not stored on
+# GL Entry — so it also works for existing invoices with no backfill).
+PI_FIELDS = ["custom_member_number", "custom_member_policy_number", "bill_no"]
+
+
+def attach_purchase_invoice_fields(gl_entries):
+    """Populate member number / member policy number / supplier bill no on each
+    GL row from its Purchase Invoice.
+
+    - Direct Purchase Invoice entries: read the values from the invoice
+      (voucher_no).
+    - Payment Entries / other vouchers settled against a Purchase Invoice:
+      inherit the values from against_voucher, so a member / invoice statement
+      shows the payments too, not just the invoices.
+    """
+    pi_names = set()
+    for e in gl_entries:
+        if e.get("voucher_type") == "Purchase Invoice" and e.get("voucher_no"):
+            pi_names.add(e.get("voucher_no"))
+        if e.get("against_voucher_type") == "Purchase Invoice" and e.get("against_voucher"):
+            pi_names.add(e.get("against_voucher"))
+
+    pi_map = {}
+    if pi_names:
+        for row in frappe.get_all(
+            "Purchase Invoice",
+            filters={"name": ["in", list(pi_names)]},
+            fields=["name"] + PI_FIELDS,
+        ):
+            pi_map[row.name] = row
+
+    for e in gl_entries:
+        source = None
+        if e.get("voucher_type") == "Purchase Invoice":
+            source = pi_map.get(e.get("voucher_no"))
+        elif e.get("against_voucher_type") == "Purchase Invoice":
+            source = pi_map.get(e.get("against_voucher"))
+
+        for f in PI_FIELDS:
+            e[f] = source.get(f) if source else None
+
+
+def custom_get_columns(filters):
+    """Add Member Number, Member Policy Number and Bill No columns to the
+    General Ledger report, right after Voucher No."""
+    columns = std_get_columns(filters)
+    extra_columns = [
+        {"label": "Member Number", "fieldname": "custom_member_number",
+         "fieldtype": "Data", "width": 130},
+        {"label": "Member Policy Number", "fieldname": "custom_member_policy_number",
+         "fieldtype": "Data", "width": 160},
+        {"label": "Bill No", "fieldname": "bill_no",
+         "fieldtype": "Data", "width": 130},
+    ]
+    insert_at = len(columns)
+    for idx, col in enumerate(columns):
+        if col.get("fieldname") == "voucher_no":
+            insert_at = idx + 1
+            break
+    for offset, col in enumerate(extra_columns):
+        columns.insert(insert_at + offset, col)
+    return columns
 
 
 
@@ -684,6 +768,7 @@ def custom_get_accountwise_gle(filters, accounting_dimensions, gl_entries, gle_m
 
 gl_report.get_gl_entries = custom_get_gl_entries
 gl_report.get_accountwise_gle = custom_get_accountwise_gle
+gl_report.get_columns = custom_get_columns
 
 
 

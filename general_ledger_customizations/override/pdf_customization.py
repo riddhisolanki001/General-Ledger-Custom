@@ -46,6 +46,7 @@
 
 import frappe
 import re
+import base64
 from urllib.parse import quote
 from frappe.utils.pdf import get_pdf as original_get_pdf
 from frappe.core.doctype.access_log.access_log import make_access_log
@@ -66,20 +67,31 @@ def custom_report_to_pdf(html=None, orientation="Landscape", **kwargs):
         url = get_url()
         letterhead = "General Ledger"
 
-        # Format is chosen from the "Format" dropdown in the Print Settings popup.
-        # The client injects a marker into the HTML (render_pdf only forwards
-        # html + orientation to the server, so the choice rides inside the html):
-        #   Claims  (default) -> Print Format "General Ledger"
-        #   Refunds           -> Print Format "General Ledger Refunds"
+        # Which layout: Claims (default) -> "General Ledger",
+        #               Refunds           -> "General Ledger Refunds".
         print_format = "General Ledger"
         match_type = re.search(r"GL_FORMAT_TYPE:\s*(\w+)", html or "", re.IGNORECASE)
         if match_type and match_type.group(1).strip().lower() == "refunds":
             print_format = "General Ledger Refunds"
 
+        # Current on-screen filters, injected by the client as a base64 marker,
+        # so the statement is generated from exactly what the user filtered
+        # (single invoice, single member, party, etc.) instead of the latest
+        # Prepared Report.
+        gl_filters_param = ""
+        match_filters = re.search(r"GL_FILTERS:([A-Za-z0-9+/=]+)", html or "")
+        if match_filters:
+            try:
+                decoded = base64.b64decode(match_filters.group(1)).decode("utf-8")
+                if decoded and decoded.strip() not in ("{}", ""):
+                    gl_filters_param = f"&gl_filters={quote(decoded)}"
+            except Exception:
+                gl_filters_param = ""
+
         download_url = (
             f"{url}/api/method/frappe.utils.print_format.download_pdf"
             f"?doctype=Report&name=General%20Ledger&format={quote(print_format)}"
-            f"&letterhead={letterhead}&_lang=en-GB"
+            f"&letterhead={letterhead}&_lang=en-GB{gl_filters_param}"
         )
 
         frappe.local.response.update({

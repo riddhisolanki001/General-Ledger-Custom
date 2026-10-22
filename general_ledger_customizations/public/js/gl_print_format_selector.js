@@ -1,23 +1,29 @@
-// General Ledger – Claims / Refunds print-format selector  (DEBUG BUILD)
+// General Ledger desk customizations
 // -------------------------------------------------------------------------
-// TEMPORARY diagnostic version. Same logic as the production file, but:
-//   * logs every step to the browser console with a [GL-PDF] prefix
-//   * surfaces errors (console.error + msgprint) instead of swallowing them
-//   * exposes window.glPdfDebug so you can inspect the last captured state
+// 1) Adds a "Format" dropdown (Claims | Refunds) to the Print Settings popup
+//    of the General Ledger report and routes the PDF to the matching layout.
+// 2) Adds Member Number, Member Policy Number and Invoice Number filters to the
+//    General Ledger report (placed with the other text filters, before the
+//    checkbox filters).
+// 3) When generating the PDF, injects the current on-screen filters (and the
+//    chosen format) into the HTML as markers, so the statement is generated
+//    LIVE from exactly what was filtered (single invoice / member / policy /
+//    party), instead of the latest Prepared Report.
 //
-// Use: replace gl_print_format_selector.js with this file, run
-//   bench build --app general_ledger_customizations
-// hard-refresh the browser (Ctrl+Shift+R), open DevTools > Console, then try
-// to download. Revert to the production file once diagnosed.
+// render_pdf() only forwards html + orientation to the server, so both the
+// format choice and the filters ride inside the HTML as marker comments that
+// the backend (pdf_customization.custom_report_to_pdf) reads.
 // -------------------------------------------------------------------------
 (function () {
 	const GL_REPORT = "General Ledger";
-	const TAG = "[GL-PDF]";
-	let gl_format_type = "Claims";
+	let gl_format_type = "Claims"; // remembered between the popup and the PDF POST
 
-	window.glPdfDebug = { gl_format_type, last_report: null, render_pdf_called: false };
-
-	console.log(TAG, "debug script loaded");
+	// Extra filters added to the General Ledger report.
+	const GL_EXTRA_FILTERS = [
+		{ fieldname: "member_number", label: __("Member Number"), fieldtype: "Data" },
+		{ fieldname: "custom_member_policy_number", label: __("Member Policy Number"), fieldtype: "Data" },
+		{ fieldname: "bill_no", label: __("Invoice Number"), fieldtype: "Data" },
+	];
 
 	function current_report_name() {
 		try {
@@ -27,30 +33,88 @@
 			const route = frappe.get_route ? frappe.get_route() : [];
 			return route && route.length > 1 ? route[1] : "";
 		} catch (e) {
-			console.error(TAG, "current_report_name failed", e);
 			return "";
 		}
 	}
 
-	// 1) Inject the "Format" dropdown into the Print Settings popup.
+	function current_filters() {
+		try {
+			if (
+				frappe.query_report &&
+				current_report_name() === GL_REPORT &&
+				typeof frappe.query_report.get_filter_values === "function"
+			) {
+				return frappe.query_report.get_filter_values() || {};
+			}
+		} catch (e) {
+			/* no-op */
+		}
+		return {};
+	}
+
+	// UTF-8 safe base64 so JSON braces/quotes survive inside an HTML comment.
+	function b64(str) {
+		return btoa(unescape(encodeURIComponent(str)));
+	}
+
+	// ----- 1) Add the extra filters to the GL report -------------------------
+	// The report's own script assigns frappe.query_reports["General Ledger"]
+	// when the report page loads (after this file). We intercept that assignment
+	// so our filters are added whenever the report object is set, and also
+	// augment it if it already exists. The fields are inserted just before the
+	// first checkbox (Check) filter so they sit with the other text/select
+	// filters instead of at the very end.
+	function add_gl_filters(report_obj) {
+		try {
+			if (!report_obj || !Array.isArray(report_obj.filters)) return report_obj;
+
+			let insert_at = report_obj.filters.findIndex((f) => f && f.fieldtype === "Check");
+			if (insert_at < 0) insert_at = report_obj.filters.length;
+
+			GL_EXTRA_FILTERS.forEach((f) => {
+				const exists = report_obj.filters.some((x) => x && x.fieldname === f.fieldname);
+				if (!exists) {
+					report_obj.filters.splice(insert_at, 0, f);
+					insert_at += 1;
+				}
+			});
+		} catch (e) {
+			console.warn("[GL] could not add filters", e);
+		}
+		return report_obj;
+	}
+
+	try {
+		frappe.provide("frappe.query_reports");
+		if (frappe.query_reports[GL_REPORT]) {
+			add_gl_filters(frappe.query_reports[GL_REPORT]);
+		}
+		let _store = frappe.query_reports[GL_REPORT];
+		Object.defineProperty(frappe.query_reports, GL_REPORT, {
+			configurable: true,
+			enumerable: true,
+			get() {
+				return _store;
+			},
+			set(v) {
+				_store = add_gl_filters(v);
+			},
+		});
+	} catch (e) {
+		console.warn("[GL] filter hook failed", e);
+	}
+
+	// ----- 2) Add the "Format" dropdown to the Print Settings popup -----------
 	const _get_print_settings = frappe.ui.get_print_settings;
 	frappe.ui.get_print_settings = function (...args) {
-		const rpt = current_report_name();
-		window.glPdfDebug.last_report = rpt;
-		console.log(TAG, "get_print_settings opened. report =", JSON.stringify(rpt));
-
-		if (rpt !== GL_REPORT) {
-			console.log(TAG, "not the General Ledger report -> leaving popup untouched");
+		if (current_report_name() !== GL_REPORT) {
 			return _get_print_settings.apply(this, args);
 		}
 
-		gl_format_type = "Claims";
-		window.glPdfDebug.gl_format_type = gl_format_type;
+		gl_format_type = "Claims"; // reset each time the popup opens
 
 		const _prompt = frappe.prompt;
-		let patched_fired = false;
 		frappe.prompt = function (fields, callback, title, primary_label) {
-			patched_fired = true;
 			if (Array.isArray(fields)) {
 				fields.splice(1, 0, {
 					fieldtype: "Select",
@@ -61,21 +125,14 @@
 					onchange() {
 						try {
 							gl_format_type = this.get_value() || "Claims";
-							window.glPdfDebug.gl_format_type = gl_format_type;
-							console.log(TAG, "dropdown changed ->", gl_format_type);
 						} catch (e) {
-							console.error(TAG, "onchange failed", e);
+							/* no-op */
 						}
 					},
 				});
-				console.log(TAG, "Format field spliced into popup. fieldcount =", fields.length);
-			} else {
-				console.warn(TAG, "prompt fields is not an array; cannot add Format field", fields);
 			}
 			const _callback = function (settings) {
 				gl_format_type = (settings && settings.gl_format_type) || "Claims";
-				window.glPdfDebug.gl_format_type = gl_format_type;
-				console.log(TAG, "Submit clicked. captured gl_format_type =", gl_format_type, settings);
 				return callback(settings);
 			};
 			return _prompt.call(this, fields, _callback, title, primary_label);
@@ -85,48 +142,27 @@
 			return _get_print_settings.apply(this, args);
 		} finally {
 			frappe.prompt = _prompt;
-			if (!patched_fired) {
-				console.warn(
-					TAG,
-					"get_print_settings did NOT call frappe.prompt in this version -> the Format field was not added. The dropdown you see is Frappe's built-in 'Print Format' field."
-				);
-			}
 		}
 	};
 
-	// 2) Carry the choice inside the HTML so the backend override can read it.
+	// ----- 3) Inject format + filters markers into the PDF html ---------------
 	const _render_pdf = frappe.render_pdf;
 	frappe.render_pdf = function (html, opts = {}) {
-		window.glPdfDebug.render_pdf_called = true;
-		const rpt = current_report_name();
-		console.log(TAG, "render_pdf called. report =", JSON.stringify(rpt), "html_len =", (html || "").length);
 		try {
-			if (rpt === GL_REPORT && typeof html === "string") {
-				const has_title = /<title>(.*?)<\/title>/i.test(html);
+			if (current_report_name() === GL_REPORT && typeof html === "string") {
 				html = html.replace(/<!--\s*GL_FORMAT_TYPE:.*?-->/gi, "");
-				html = "<!-- GL_FORMAT_TYPE: " + (gl_format_type || "Claims") + " -->" + html;
-				console.log(
-					TAG,
-					"marker injected ->",
-					gl_format_type,
-					"| <title> present in html:",
-					has_title
-				);
-				if (!has_title) {
-					console.warn(
-						TAG,
-						"No <title> in the html — the backend keys the GL branch off <title>, so it may not match."
-					);
-				}
+				html = html.replace(/<!--\s*GL_FILTERS:.*?-->/gi, "");
+
+				const filters_marker =
+					"<!-- GL_FILTERS:" + b64(JSON.stringify(current_filters())) + " -->";
+				const format_marker =
+					"<!-- GL_FORMAT_TYPE: " + (gl_format_type || "Claims") + " -->";
+
+				html = format_marker + filters_marker + html;
 			}
 		} catch (e) {
-			console.error(TAG, "marker injection failed", e);
-			frappe.msgprint("GL-PDF marker injection failed: " + e.message);
+			console.error("[GL] marker injection failed", e);
 		}
 		return _render_pdf.call(this, html, opts);
 	};
-
-	// Surface the fact that render_pdf never ran after a submit, which means the
-	// PDF path in this Frappe version does not go through frappe.render_pdf.
-	console.log(TAG, "wrappers installed. After clicking Submit, expect a 'render_pdf called' line.");
 })();
