@@ -35,7 +35,6 @@ def _resolve_filters(gl_filters):
         parsed = frappe.parse_json(raw) if isinstance(raw, str) else raw
     except Exception:
         return {}
-    # strip empty values so we don't pass blanks to the report
     if isinstance(parsed, dict):
         return {k: v for k, v in parsed.items() if v not in (None, "", [], {})}
     return {}
@@ -45,7 +44,7 @@ def _run_live(filters):
     """Run the General Ledger report synchronously with the given filters.
 
     Because our overrides are installed at import time, this uses the same
-    custom GL logic (withholding handling, member-number tagging, member
+    custom GL logic (withholding handling, member / invoice tagging, member
     filter, etc.) that the on-screen report uses.
     """
     from frappe.desk.query_report import run
@@ -116,6 +115,7 @@ def _shape(data, applied_filters):
     the Payment Entry cheque-no and withholding-tax tweaks the statement needs.
     The GL report result is ordered [opening, ...rows..., total, closing]."""
     data = list(data or [])
+    applied_filters = dict(applied_filters or {})
 
     first_row = data[0] if len(data) > 0 else None
     last_row = data[-1] if len(data) > 0 else None
@@ -158,9 +158,20 @@ def _shape(data, applied_filters):
                     )
                 row["cheque_no"] = payment_cache.get(pe_name)
 
+    # Member name for the statement header: when filtering by member number,
+    # surface the member name pulled from the invoice so the print format can
+    # show it in the Name field.
+    if applied_filters.get("member_number"):
+        member_name = ""
+        for row in cleaned_data:
+            if row.get("custom_member_name"):
+                member_name = row.get("custom_member_name")
+                break
+        applied_filters["custom_member_name"] = member_name
+
     return {
         "success": True,
-        "applied_filters": applied_filters or {},
+        "applied_filters": applied_filters,
         "data": cleaned_data,
         "balance_details": {
             "opening": first_row,

@@ -479,7 +479,8 @@ def custom_get_gl_entries(filters, accounting_dimensions):
         if gl_entry.party_type and gl_entry.party:
             gl_entry.party_name = party_name_map.get(gl_entry.party_type, {}).get(gl_entry.party)
 
-    # ---- Purchase Invoice fields (member no / policy no / bill no) + filters --
+    # ---- Purchase Invoice fields (member no / policy no / bill no / member
+    #      name) + invoice remarks + optional filters -------------------------
     attach_purchase_invoice_fields(gl_entries)
 
     # filter fieldname (report)  ->  row fieldname (populated above)
@@ -505,21 +506,22 @@ def custom_get_gl_entries(filters, accounting_dimensions):
         return gl_entries
 
 
-# Purchase Invoice fields surfaced on the General Ledger (lookup, not stored on
-# GL Entry — so it also works for existing invoices with no backfill).
-PI_FIELDS = ["custom_member_number", "custom_member_policy_number", "bill_no"]
+# Purchase Invoice fields inherited onto the invoice's own GL rows AND onto
+# payments / entries settled against it (so a member / invoice statement shows
+# the payments too). Looked up live, so they work for existing invoices with no
+# backfill.
+PI_FIELDS = [
+    "custom_member_number",
+    "custom_member_policy_number",
+    "bill_no",
+    "custom_member_name",
+]
 
 
 def attach_purchase_invoice_fields(gl_entries):
-    """Populate member number / member policy number / supplier bill no on each
-    GL row from its Purchase Invoice.
-
-    - Direct Purchase Invoice entries: read the values from the invoice
-      (voucher_no).
-    - Payment Entries / other vouchers settled against a Purchase Invoice:
-      inherit the values from against_voucher, so a member / invoice statement
-      shows the payments too, not just the invoices.
-    """
+    """Populate member no / policy no / bill no / member name on each GL row
+    from its Purchase Invoice, plus the invoice remarks (for the statement
+    Narration, on actual Purchase Invoice rows only)."""
     pi_names = set()
     for e in gl_entries:
         if e.get("voucher_type") == "Purchase Invoice" and e.get("voucher_no"):
@@ -532,19 +534,27 @@ def attach_purchase_invoice_fields(gl_entries):
         for row in frappe.get_all(
             "Purchase Invoice",
             filters={"name": ["in", list(pi_names)]},
-            fields=["name"] + PI_FIELDS,
+            fields=["name"] + PI_FIELDS + ["remarks"],
         ):
             pi_map[row.name] = row
 
     for e in gl_entries:
+        # member / policy / bill / member name — from the invoice, whether this
+        # row is the invoice itself or a payment settled against it.
         source = None
         if e.get("voucher_type") == "Purchase Invoice":
             source = pi_map.get(e.get("voucher_no"))
         elif e.get("against_voucher_type") == "Purchase Invoice":
             source = pi_map.get(e.get("against_voucher"))
-
         for f in PI_FIELDS:
             e[f] = source.get(f) if source else None
+
+        # invoice remarks -> Narration, only for actual Purchase Invoice rows.
+        if e.get("voucher_type") == "Purchase Invoice":
+            pi = pi_map.get(e.get("voucher_no"))
+            e["custom_invoice_remarks"] = pi.get("remarks") if pi else None
+        else:
+            e["custom_invoice_remarks"] = None
 
 
 def custom_get_columns(filters):
@@ -865,28 +875,3 @@ def custom_calculate_tax_withholding_net_total(self):
  
  
 PaymentEntry.calculate_tax_withholding_net_total = custom_calculate_tax_withholding_net_total
-
-_core_set_tax_withholding = PaymentEntry.set_tax_withholding
- 
- 
-def custom_set_tax_withholding(self):
-    # 1) Run the original logic first — adds / updates the
-    #    withholding row in the `taxes` table exactly as before.
-    _core_set_tax_withholding(self)
- 
-    # 2) Total withholding = sum of tax amounts in the taxes table.
-    #    abs() keeps it positive for display (deduct rows are -ve).
-    total_withholding = abs(sum(flt(d.tax_amount) for d in (self.get("taxes") or [])))
- 
-    # 3) Write the custom fields.
-    self.custom_withholding_amount = total_withholding
- 
-    # Net amount actually paid to the party = gross - withholding.
-    # >>> Change this if your "Net Total" means something else, e.g.:
-    #     self.custom_net_total = self.calculate_tax_withholding_net_total()   # TDS taxable base
-    #     self.custom_net_total = flt(self.base_paid_amount) - total_withholding  # company currency
-    self.custom_net_total = flt(self.paid_amount) - total_withholding
- 
- 
-PaymentEntry.set_tax_withholding = custom_set_tax_withholding
- 
